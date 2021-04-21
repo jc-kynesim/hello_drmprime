@@ -42,6 +42,8 @@
 #include <libavutil/avassert.h>
 #include <libavutil/imgutils.h>
 
+#include "drmprime_out.h"
+
 static AVBufferRef *hw_device_ctx = NULL;
 static enum AVPixelFormat hw_pix_fmt;
 static FILE *output_file = NULL;
@@ -74,7 +76,9 @@ static enum AVPixelFormat get_hw_format(AVCodecContext *ctx,
     return AV_PIX_FMT_NONE;
 }
 
-static int decode_write(AVCodecContext *avctx, AVPacket *packet)
+static int decode_write(AVCodecContext * const avctx,
+                        drmprime_out_env_t * const dpo,
+                        AVPacket *packet)
 {
     AVFrame *frame = NULL, *sw_frame = NULL;
     AVFrame *tmp_frame = NULL;
@@ -105,6 +109,8 @@ static int decode_write(AVCodecContext *avctx, AVPacket *packet)
             goto fail;
         }
 
+        drmprime_out_display(dpo, frame);
+#if 0
         if (frame->format == hw_pix_fmt) {
             /* retrieve data from GPU to CPU */
             if ((ret = av_hwframe_transfer_data(sw_frame, frame, 0)) < 0) {
@@ -136,6 +142,7 @@ static int decode_write(AVCodecContext *avctx, AVPacket *packet)
             fprintf(stderr, "Failed to dump raw data.\n");
             goto fail;
         }
+#endif
 
     fail:
         av_frame_free(&frame);
@@ -155,16 +162,20 @@ int main(int argc, char *argv[])
     AVCodec *decoder = NULL;
     AVPacket packet;
     enum AVHWDeviceType type;
+    const char * in_file;
+    const char * hwdev = "drm";
     int i;
+    drmprime_out_env_t * dpo;
 
-    if (argc < 4) {
-        fprintf(stderr, "Usage: %s <device type> <input file> <output file>\n", argv[0]);
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
         return -1;
     }
+    in_file = argv[1];
 
-    type = av_hwdevice_find_type_by_name(argv[1]);
+    type = av_hwdevice_find_type_by_name(hwdev);
     if (type == AV_HWDEVICE_TYPE_NONE) {
-        fprintf(stderr, "Device type %s is not supported.\n", argv[1]);
+        fprintf(stderr, "Device type %s is not supported.\n", hwdev);
         fprintf(stderr, "Available device types:");
         while((type = av_hwdevice_iterate_types(type)) != AV_HWDEVICE_TYPE_NONE)
             fprintf(stderr, " %s", av_hwdevice_get_type_name(type));
@@ -172,9 +183,15 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    dpo = drmprime_out_new();
+    if (dpo == NULL) {
+        fprintf(stderr, "Failed to open drmprime output\n");
+        return 1;
+    }
+
     /* open the input file */
-    if (avformat_open_input(&input_ctx, argv[2], NULL, NULL) != 0) {
-        fprintf(stderr, "Cannot open input file '%s'\n", argv[2]);
+    if (avformat_open_input(&input_ctx, in_file, NULL, NULL) != 0) {
+        fprintf(stderr, "Cannot open input file '%s'\n", in_file);
         return -1;
     }
 
@@ -231,7 +248,7 @@ int main(int argc, char *argv[])
             break;
 
         if (video_stream == packet.stream_index)
-            ret = decode_write(decoder_ctx, &packet);
+            ret = decode_write(decoder_ctx, dpo, &packet);
 
         av_packet_unref(&packet);
     }
@@ -239,7 +256,7 @@ int main(int argc, char *argv[])
     /* flush the decoder */
     packet.data = NULL;
     packet.size = 0;
-    ret = decode_write(decoder_ctx, &packet);
+    ret = decode_write(decoder_ctx, dpo, &packet);
     av_packet_unref(&packet);
 
     if (output_file)
@@ -247,6 +264,8 @@ int main(int argc, char *argv[])
     avcodec_free_context(&decoder_ctx);
     avformat_close_input(&input_ctx);
     av_buffer_unref(&hw_device_ctx);
+
+    drmprime_out_delete(dpo);
 
     return 0;
 }
