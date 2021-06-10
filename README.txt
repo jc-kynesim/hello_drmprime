@@ -1,14 +1,4 @@
-# To build & test
-
-# Step 0
-# Right now the ffmpeg you need is untested so add 'untested' after
-# 'main' in /etc/apt/sources.list.d/raspi.list using the editor of your
-# choice - remember that you will need sudo to be able to edit
-sudo vi /etc/apt/sources.list.d/raspi.list
-
-# Then update & upgrade the current ffmpeg
-sudo apt update
-sudo apt upgrade
+# --- To build & test ---
 
 # Step 1 - get libraries:
 
@@ -47,4 +37,11 @@ reboot
 ls -la /dev/video*
 # This should include video19
 # crw-rw----+ 1 root video 81, 7 Aug  4 17:25 /dev/video19
+
+# --- Notes ---
+
+This is a trivial example prog on how to get DRM_PRIME frames out of ffmpeg
+and how to display them using drm.  It makes no attempt to pace the video or
+scale it correctly, video will just be displayed at one frame per vsync
+(assuming that decode is keeping pace) and stretched to the edge of the screen.
 
