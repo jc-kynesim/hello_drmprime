@@ -1,8 +1,18 @@
 # To build & test
 
-# 1st get libraries:
+# Step 0
+# Right now the ffmpeg you need is untested so add 'untested' after
+# 'main' in /etc/apt/sources.list.d/raspi.list using the editor of your
+# choice - remember that you will need sudo to be able to edit
+sudo vi /etc/apt/sources.list.d/raspi.list
 
-sudo apt install libavcodec-dev libavformat-dev libavutil-dev libdrm-dev
+# Then update & upgrade the current ffmpeg
+sudo apt update
+sudo apt upgrade
+
+# Step 1 - get libraries:
+
+sudo apt install libavcodec-dev libavformat-dev libdrm-dev
 
 # Make
 
