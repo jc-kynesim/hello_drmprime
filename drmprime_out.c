@@ -60,6 +60,8 @@ struct drm_setup
 typedef struct drm_aux_s
 {
     unsigned int fb_handle;
+    uint32_t bo_handles[AV_DRM_MAX_PLANES];
+
     AVFrame *frame;
 } drm_aux_t;
 
@@ -137,9 +139,19 @@ static int find_plane(const int drmfd, const int crtcidx, const uint32_t format,
 
 static void da_uninit(drmprime_out_env_t *const de, drm_aux_t *da)
 {
+    unsigned int i;
+
     if (da->fb_handle != 0) {
         drmModeRmFB(de->drm_fd, da->fb_handle);
         da->fb_handle = 0;
+    }
+
+    for (i = 0; i != AV_DRM_MAX_PLANES; ++i) {
+        if (da->bo_handles[i]) {
+            struct drm_gem_close gem_close = {.handle = da->bo_handles[i]};
+            drmIoctl(de->drm_fd, DRM_IOCTL_GEM_CLOSE, &gem_close);
+            da->bo_handles[i] = 0;
+        }
     }
 
     av_frame_free(&da->frame);
@@ -187,14 +199,14 @@ static int do_display(drmprime_out_env_t *const de, AVFrame *frame)
         uint32_t pitches[4] = { 0 };
         uint32_t offsets[4] = { 0 };
         uint64_t modifiers[4] = { 0 };
-        uint32_t bo_object_handles[4] = { 0 };
         uint32_t bo_handles[4] = { 0 };
         int i, j, n;
 
         da->frame = frame;
 
+        memset(da->bo_handles, 0, sizeof(da->bo_handles));
         for (i = 0; i < desc->nb_objects; ++i) {
-            if (drmPrimeFDToHandle(de->drm_fd, desc->objects[i].fd, bo_object_handles + i) != 0) {
+            if (drmPrimeFDToHandle(de->drm_fd, desc->objects[i].fd, da->bo_handles + i) != 0) {
                 fprintf(stderr, "drmPrimeFDToHandle[%d](%d) failed: %s\n", i, desc->objects[i].fd, ERRSTR);
                 return -1;
             }
@@ -208,7 +220,7 @@ static int do_display(drmprime_out_env_t *const de, AVFrame *frame)
                 pitches[n] = p->pitch;
                 offsets[n] = p->offset;
                 modifiers[n] = obj->format_modifier;
-                bo_handles[n] = bo_object_handles[p->object_index];
+                bo_handles[n] = da->bo_handles[p->object_index];
                 ++n;
             }
         }
