@@ -163,7 +163,7 @@ static int decode_write(AVCodecContext * const avctx,
 
 void usage()
 {
-    fprintf(stderr, "Usage: hello_drmprime [-l loop_count] [-o yuv_output_file] <input file>\n");
+    fprintf(stderr, "Usage: hello_drmprime [-l loop_count] [-o yuv_output_file] <input file> [<input_file> ...]\n");
     exit(1);
 }
 
@@ -177,10 +177,13 @@ int main(int argc, char *argv[])
     AVPacket packet;
     enum AVHWDeviceType type;
     const char * in_file;
+    char * const * in_filelist;
+    unsigned int in_count;
+    unsigned int in_n = 0;
     const char * hwdev = "drm";
     int i;
     drmprime_out_env_t * dpo;
-    long loop_count = 0;
+    long loop_count = 1;
     long frame_count = -1;
     const char * out_name = NULL;
 
@@ -221,11 +224,13 @@ int main(int argc, char *argv[])
                 break;
         }
 
-        // Last arg is input file
-        if (n != 0)
+        // Last args are input files
+        if (n < 0)
             usage();
 
-        in_file = a[0];
+        in_filelist = a;
+        in_count = n + 1;
+        loop_count *= in_count;
     }
 
     type = av_hwdevice_find_type_by_name(hwdev);
@@ -253,6 +258,10 @@ int main(int argc, char *argv[])
     }
 
 loopy:
+    in_file = in_filelist[in_n];
+    if (++in_n >= in_count)
+        in_n = 0;
+
     /* open the input file */
     if (avformat_open_input(&input_ctx, in_file, NULL, NULL) != 0) {
         fprintf(stderr, "Cannot open input file '%s'\n", in_file);
