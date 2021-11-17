@@ -44,7 +44,6 @@
 
 #include "drmprime_out.h"
 
-static AVBufferRef *hw_device_ctx = NULL;
 static enum AVPixelFormat hw_pix_fmt;
 static FILE *output_file = NULL;
 static long frames = 0;
@@ -54,6 +53,7 @@ static int hw_decoder_init(AVCodecContext *ctx, const enum AVHWDeviceType type)
     int err = 0;
 
     ctx->hw_frames_ctx = NULL;
+    // ctx->hw_device_ctx gets freed when we call avcodec_free_context
     if ((err = av_hwdevice_ctx_create(&ctx->hw_device_ctx, type,
                                       NULL, NULL, 0)) < 0) {
         fprintf(stderr, "Failed to create specified HW device.\n");
@@ -345,7 +345,6 @@ loopy:
         fclose(output_file);
     avcodec_free_context(&decoder_ctx);
     avformat_close_input(&input_ctx);
-    av_buffer_unref(&hw_device_ctx);
 
     if (--loop_count > 0)
         goto loopy;
