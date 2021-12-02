@@ -2,7 +2,7 @@
 
 # Step 1 - get libraries:
 
-sudo apt install libavcodec-dev libavformat-dev libdrm-dev
+sudo apt install libavcodec-dev libavformat-dev libavfilter-dev libdrm-dev
 
 # Make
 
@@ -44,4 +44,20 @@ This is a trivial example prog on how to get DRM_PRIME frames out of ffmpeg
 and how to display them using drm.  It makes no attempt to pace the video or
 scale it correctly, video will just be displayed at one frame per vsync
 (assuming that decode is keeping pace) and stretched to the edge of the screen.
+
+
+Current options:
+
+-l <n> | --loop <n>
+   Play the filelist <n> times
+
+-f <n> | --frames <n>
+   Only play the first <n> frames of each file
+
+-o <output file>
+   Dump the raw output frame (after filter) to <output file>
+
+--deinterlace
+   Apply the deinterlace filter to the stream before output
+
 
