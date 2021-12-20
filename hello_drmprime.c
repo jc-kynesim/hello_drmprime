@@ -34,6 +34,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -94,6 +95,8 @@ static int decode_write(AVCodecContext * const avctx,
     int ret = 0;
     unsigned int i;
 
+    fprintf(stderr, "PTS In=%"PRId64"\n", packet->pts);
+
     ret = avcodec_send_packet(avctx, packet);
     if (ret < 0) {
         fprintf(stderr, "Error during decoding\n");
@@ -116,6 +119,8 @@ static int decode_write(AVCodecContext * const avctx,
             fprintf(stderr, "Error while decoding\n");
             goto fail;
         }
+
+        fprintf(stderr, "PTS Out=%"PRId64", delta=%"PRId64"\n", frame->pts, packet->pts - frame->pts);
 
         // push the decoded frame into the filtergraph if it exists
         if (filter_graph != NULL &&
@@ -281,9 +286,20 @@ end:
     return ret;
 }
 
+static uint64_t
+us_time()
+{
+    struct timespec ts = {0};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
 void usage()
 {
-    fprintf(stderr, "Usage: hello_drmprime [-l loop_count] [-f <frames>] [-o yuv_output_file] [--deinterlace] <input file> [<input_file> ...]\n");
+    fprintf(stderr,
+            "Usage: hello_drmprime [-l loop_count] [-f <frames>] [-o yuv_output_file]\n"
+            "                      [--deinterlace] [--pace-input <hz>]\n"
+            "                      <input file> [<input_file> ...]\n");
     exit(1);
 }
 
@@ -307,6 +323,7 @@ int main(int argc, char *argv[])
     long frame_count = -1;
     const char * out_name = NULL;
     bool wants_deinterlace = false;
+    long pace_input_hz = 0;
 
     {
         char * const * a = argv + 1;
@@ -338,6 +355,15 @@ int main(int argc, char *argv[])
                 if (n == 0)
                     usage();
                 out_name = *a;
+                --n;
+                ++a;
+            }
+            else if (strcmp(arg, "--pace-input") == 0) {
+                if (n == 0)
+                    usage();
+                pace_input_hz = strtol(*a, &e, 0);
+                if (*e != 0)
+                    usage();
                 --n;
                 ++a;
             }
@@ -441,6 +467,7 @@ loopy:
         return -1;
 
     decoder_ctx->thread_count = 3;
+    decoder_ctx->flags = AV_CODEC_FLAG_LOW_DELAY;
 
     if ((ret = avcodec_open2(decoder_ctx, decoder, NULL)) < 0) {
         fprintf(stderr, "Failed to open codec for stream #%u\n", video_stream);
@@ -455,15 +482,41 @@ loopy:
     }
 
     /* actual decoding and dump the raw data */
-    frames = frame_count;
-    while (ret >= 0) {
-        if ((ret = av_read_frame(input_ctx, &packet)) < 0)
-            break;
+    {
+        uint64_t t0 = us_time() + 3000; // Allow a few ms so we aren't behind at startup
+        int pts_seen = 0;
+        uint64_t fake_ts = 0;
 
-        if (video_stream == packet.stream_index)
-            ret = decode_write(decoder_ctx, dpo, &packet);
+        frames = frame_count;
+        while (ret >= 0) {
+            if ((ret = av_read_frame(input_ctx, &packet)) < 0)
+                break;
 
-        av_packet_unref(&packet);
+            if (video_stream == packet.stream_index) {
+                if (pace_input_hz > 0) {
+                    const uint64_t now = us_time();
+                    if (now < t0)
+                        usleep(t0 - now);
+                    else
+                        fprintf(stderr, "input pace failure by %"PRId64"us\n", now - t0);
+
+                    t0 += 1000000 / pace_input_hz;
+
+                    if (packet.pts != AV_NOPTS_VALUE) {
+                        pts_seen = 1;
+                    }
+                    else if (!pts_seen) {
+                        packet.dts = fake_ts;
+                        packet.pts = fake_ts;
+                        fake_ts += 90000 / pace_input_hz;
+                    }
+                }
+
+                ret = decode_write(decoder_ctx, dpo, &packet);
+            }
+
+            av_packet_unref(&packet);
+        }
     }
 
     /* flush the decoder */

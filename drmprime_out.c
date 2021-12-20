@@ -501,7 +501,7 @@ drmprime_out_env_t* drmprime_out_new()
     de->con_id = 0;
     de->setup = (struct drm_setup) { 0 };
     de->q_terminate = 0;
-    de->show_all = 1;
+    de->show_all = 0;
 
     if ((de->drm_fd = drmOpen(drm_module, NULL)) < 0) {
         rv = AVERROR(errno);
